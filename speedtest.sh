@@ -14,6 +14,21 @@ NC='\033[0m' # No Color
 # 声明关联数组来存储服务器备注信息
 declare -A SERVER_COMMENTS
 
+# 临时文件清理变量
+TEMP_FILE_TO_CLEANUP=""
+SHOULD_CLEANUP=false
+
+# 清理函数
+cleanup_temp_file() {
+    if [[ "$SHOULD_CLEANUP" == true && -n "$TEMP_FILE_TO_CLEANUP" && -f "$TEMP_FILE_TO_CLEANUP" ]]; then
+        rm -f "$TEMP_FILE_TO_CLEANUP"
+        echo -e "\n${BLUE}已清理临时文件: $TEMP_FILE_TO_CLEANUP${NC}" >&2
+    fi
+}
+
+# 信号处理
+trap cleanup_temp_file EXIT INT TERM
+
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULT_DIR="${SCRIPT_DIR}/speedtest_result"
@@ -62,12 +77,14 @@ show_help() {
     echo ""
     echo "选项:"
     echo "  -f FILE    从文件读取服务器ID列表（每行一个ID）"
+    echo "  -u         下载远程servers.txt文件并执行测试"
     echo "  -l         列出附近的服务器ID"
     echo "  -h         显示帮助信息"
     echo ""
     echo "示例:"
     echo "  $0 12345 67890 54321"
     echo "  $0 -f servers.txt"
+    echo "  $0 -u"
     echo ""
 }
 
@@ -75,6 +92,40 @@ show_help() {
 list_servers() {
     echo -e "${BLUE}正在获取附近的服务器列表...${NC}"
     speedtest --servers
+}
+
+# 下载远程servers.txt文件
+download_servers_file() {
+    local remote_url="https://raw.githubusercontent.com/youtonghy/global-speedtest/refs/heads/main/servers.txt"
+    local local_file="${SCRIPT_DIR}/servers.txt"
+    
+    echo -e "${BLUE}正在下载远程服务器列表...${NC}" >&2
+    
+    # 检查curl或wget是否可用
+    if command -v curl &> /dev/null; then
+        if curl -s -o "$local_file" "$remote_url"; then
+            echo -e "${GREEN}服务器列表下载成功: $local_file${NC}" >&2
+            echo "$local_file"
+        else
+            echo -e "${RED}下载失败: 无法从 $remote_url 下载文件${NC}" >&2
+            exit 1
+        fi
+    elif command -v wget &> /dev/null; then
+        if wget -q -O "$local_file" "$remote_url"; then
+            echo -e "${GREEN}服务器列表下载成功: $local_file${NC}" >&2
+            echo "$local_file"
+        else
+            echo -e "${RED}下载失败: 无法从 $remote_url 下载文件${NC}" >&2
+            exit 1
+        fi
+    else
+        echo -e "${RED}错误: 未找到 curl 或 wget 命令${NC}" >&2
+        echo -e "${YELLOW}请先安装 curl 或 wget:${NC}" >&2
+        echo "  Ubuntu/Debian: sudo apt-get install curl" >&2
+        echo "  CentOS/RHEL: sudo yum install curl" >&2
+        echo "  macOS: curl 通常已预装" >&2
+        exit 1
+    fi
 }
 
 # 记录日志
@@ -187,6 +238,8 @@ read_servers_from_file() {
 # 主函数
 main() {
     local servers=()
+    local downloaded_file=""
+    local cleanup_file=false
     
     # 解析命令行参数
     while [[ $# -gt 0 ]]; do
@@ -198,6 +251,15 @@ main() {
             -l|--list)
                 list_servers
                 exit 0
+                ;;
+            -u|--update)
+                downloaded_file=$(download_servers_file)
+                servers=($(read_servers_from_file "$downloaded_file"))
+                cleanup_file=true
+                # 设置全局清理变量
+                TEMP_FILE_TO_CLEANUP="$downloaded_file"
+                SHOULD_CLEANUP=true
+                shift
                 ;;
             -f|--file)
                 if [[ -n "$2" ]]; then
@@ -257,6 +319,15 @@ main() {
     
     echo "" >> "${LOG_FILE}"
     echo "# 所有测试完成 - $(date '+%Y-%m-%d %H:%M:%S')" >> "${LOG_FILE}"
+    
+    # 如果是通过-u参数下载的文件，删除临时文件
+    if [[ "$cleanup_file" == true && -f "$downloaded_file" ]]; then
+        rm -f "$downloaded_file"
+        echo -e "${BLUE}已清理临时文件: $downloaded_file${NC}"
+        # 重置清理变量，避免EXIT trap重复执行
+        SHOULD_CLEANUP=false
+    fi
+    
     echo -e "${GREEN}所有测试完成！结果已保存到 ${LOG_FILE}${NC}"
 }
 
