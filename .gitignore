@@ -1,0 +1,5 @@
+# Speedtest 结果目录
+speedtest_result/
+
+# 日志文件
+*.log 
