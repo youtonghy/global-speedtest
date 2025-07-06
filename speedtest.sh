@@ -24,21 +24,32 @@ create_result_dir() {
     fi
 }
 
-# 检查speedtest-cli是否已安装
+# 检查官方speedtest是否已安装
 check_speedtest_cli() {
     if ! command -v speedtest &> /dev/null; then
-        echo -e "${RED}错误: speedtest-cli 未安装${NC}"
-        echo -e "${YELLOW}请先安装 speedtest-cli:${NC}"
-        echo "  Ubuntu/Debian: sudo apt install speedtest-cli"
-        echo "  CentOS/RHEL: sudo yum install speedtest-cli"
-        echo "  或者使用 pip: pip install speedtest-cli"
+        echo -e "${RED}错误: 官方 Speedtest CLI 未安装${NC}"
+        echo -e "${YELLOW}请先安装 Ookla Speedtest CLI:${NC}"
+        echo "  Ubuntu/Debian:"
+        echo "    sudo apt-get install curl"
+        echo "    curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash"
+        echo "    sudo apt-get install speedtest"
+        echo ""
+        echo "  CentOS/RHEL:"
+        echo "    curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.rpm.sh | sudo bash"
+        echo "    sudo yum install speedtest"
+        echo ""
+        echo "  macOS:"
+        echo "    brew tap teamookla/speedtest"
+        echo "    brew install speedtest"
+        echo ""
+        echo "  或者从官方网站下载: https://www.speedtest.net/apps/cli"
         exit 1
     fi
 }
 
 # 显示帮助信息
 show_help() {
-    echo -e "${BLUE}Speedtest 批量测速脚本${NC}"
+    echo -e "${BLUE}Speedtest 批量测速脚本 (使用官方 Ookla Speedtest CLI)${NC}"
     echo ""
     echo "用法:"
     echo "  $0 [server_id1] [server_id2] [server_id3] ..."
@@ -60,7 +71,7 @@ show_help() {
 # 列出附近的服务器
 list_servers() {
     echo -e "${BLUE}正在获取附近的服务器列表...${NC}"
-    speedtest --secure --list
+    speedtest --servers
 }
 
 # 记录日志
@@ -81,7 +92,7 @@ test_server() {
     
     # 执行speedtest测试
     local result
-    if result=$(speedtest --secure --bytes --server ${server_id} 2>&1); then
+    if result=$(speedtest --server-id=${server_id} --format=human-readable 2>&1); then
         echo -e "${GREEN}服务器 ${server_id} 测试完成${NC}"
         log_message "服务器 ${server_id} 测试成功"
         log_message "测试结果:"
@@ -164,7 +175,7 @@ main() {
         exit 1
     fi
     
-    # 检查speedtest-cli是否安装
+    # 检查speedtest是否安装
     check_speedtest_cli
     
     # 创建结果目录
@@ -172,7 +183,7 @@ main() {
     
     # 创建日志文件
     echo -e "${BLUE}测速结果将保存到: ${LOG_FILE}${NC}"
-    log_message "开始批量测速"
+    log_message "开始批量测速 (使用官方 Ookla Speedtest CLI)"
     log_message "服务器ID列表: ${servers[*]}"
     
     # 逐个测试服务器
