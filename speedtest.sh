@@ -11,6 +11,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# 声明关联数组来存储服务器备注信息
+declare -A SERVER_COMMENTS
+
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESULT_DIR="${SCRIPT_DIR}/speedtest_result"
@@ -82,29 +85,70 @@ log_message() {
     echo -e "${message}"
 }
 
+# 解析speedtest结果并格式化
+parse_speedtest_result() {
+    local result="$1"
+    local server_id="$2"
+    local comment="$3"
+    
+    # 提取各项数据
+    local server_info=$(echo "$result" | grep -i "server:" | sed 's/.*Server: *//')
+    local ping=$(echo "$result" | grep -i "latency:" | sed 's/.*Latency: *//' | sed 's/ *ms.*//')
+    local download=$(echo "$result" | grep -i "download:" | sed 's/.*Download: *//' | sed 's/ *Mbps.*//')
+    local upload=$(echo "$result" | grep -i "upload:" | sed 's/.*Upload: *//' | sed 's/ *Mbps.*//')
+    local packet_loss=$(echo "$result" | grep -i "packet loss:" | sed 's/.*Packet Loss: *//' | sed 's/%.*//') 
+    
+    # 如果没有找到丢包率，默认为0.0
+    if [[ -z "$packet_loss" ]]; then
+        packet_loss="0.0"
+    fi
+    
+    # 如果有备注，使用备注作为服务器名称，否则使用解析的服务器信息
+    local display_name="$server_info"
+    if [[ -n "$comment" ]]; then
+        display_name="$comment"
+    fi
+    
+    # 生成格式化的日志条目
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "${display_name} | ${ping} ms | ${download} Mbps | ${upload} Mbps | ${packet_loss}% | ${timestamp}"
+}
+
 # 测试单个服务器
 test_server() {
     local server_id="$1"
+    local comment="${SERVER_COMMENTS[$server_id]}"
     local start_time=$(date '+%Y-%m-%d %H:%M:%S')
     
-    echo -e "${YELLOW}正在测试服务器 ID: ${server_id}${NC}"
-    log_message "开始测试服务器 ID: ${server_id}"
+    if [[ -n "$comment" ]]; then
+        echo -e "${YELLOW}正在测试服务器 ID: ${server_id} (${comment})${NC}"
+    else
+        echo -e "${YELLOW}正在测试服务器 ID: ${server_id}${NC}"
+    fi
     
     # 执行speedtest测试
     local result
     if result=$(speedtest --server-id=${server_id} --format=human-readable 2>&1); then
-        echo -e "${GREEN}服务器 ${server_id} 测试完成${NC}"
-        log_message "服务器 ${server_id} 测试成功"
-        log_message "测试结果:"
-        log_message "${result}"
+        if [[ -n "$comment" ]]; then
+            echo -e "${GREEN}服务器 ${server_id} (${comment}) 测试完成${NC}"
+        else
+            echo -e "${GREEN}服务器 ${server_id} 测试完成${NC}"
+        fi
+        
+        # 解析结果并写入格式化的日志
+        local formatted_result=$(parse_speedtest_result "$result" "$server_id" "$comment")
+        echo "$formatted_result" >> "${LOG_FILE}"
+        
     else
-        echo -e "${RED}服务器 ${server_id} 测试失败${NC}"
-        log_message "服务器 ${server_id} 测试失败"
-        log_message "错误信息: ${result}"
+        if [[ -n "$comment" ]]; then
+            echo -e "${RED}服务器 ${server_id} (${comment}) 测试失败${NC}"
+            echo "服务器 ${server_id} (${comment}) 测试失败 - $(date '+%Y-%m-%d %H:%M:%S')" >> "${LOG_FILE}"
+        else
+            echo -e "${RED}服务器 ${server_id} 测试失败${NC}"
+            echo "服务器 ${server_id} 测试失败 - $(date '+%Y-%m-%d %H:%M:%S')" >> "${LOG_FILE}"
+        fi
     fi
     
-    log_message "完成时间: $(date '+%Y-%m-%d %H:%M:%S')"
-    log_message "----------------------------------------"
     echo ""
 }
 
@@ -118,13 +162,21 @@ read_servers_from_file() {
     
     local servers=()
     while IFS= read -r line; do
-        # 跳过空行和注释行
+        # 跳过空行和注释行（以#开头的行）
         if [[ -n "$line" && ! "$line" =~ ^[[:space:]]*# ]]; then
-            # 提取服务器ID（取第一个单词，忽略注释）
+            # 提取服务器ID（第一个单词）
             local server_id=$(echo "$line" | awk '{print $1}')
             # 检查是否是有效的数字ID
             if [[ "$server_id" =~ ^[0-9]+$ ]]; then
                 servers+=("$server_id")
+                
+                # 提取备注信息（#后面的内容）
+                if [[ "$line" =~ \#(.+)$ ]]; then
+                    local comment="${BASH_REMATCH[1]}"
+                    # 去除前导和尾随空格
+                    comment=$(echo "$comment" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+                    SERVER_COMMENTS[$server_id]="$comment"
+                fi
             fi
         fi
     done < "$file"
@@ -183,8 +235,10 @@ main() {
     
     # 创建日志文件
     echo -e "${BLUE}测速结果将保存到: ${LOG_FILE}${NC}"
-    log_message "开始批量测速 (使用官方 Ookla Speedtest CLI)"
-    log_message "服务器ID列表: ${servers[*]}"
+    echo "# Speedtest批量测速结果 - $(date '+%Y-%m-%d %H:%M:%S')" > "${LOG_FILE}"
+    echo "# 格式: 服务器名称 | 延迟 | 下载速度 | 上传速度 | 丢包率 | 时间" >> "${LOG_FILE}"
+    echo "# 服务器ID列表: ${servers[*]}" >> "${LOG_FILE}"
+    echo "" >> "${LOG_FILE}"
     
     # 逐个测试服务器
     local total=${#servers[@]}
@@ -201,7 +255,8 @@ main() {
         fi
     done
     
-    log_message "所有测试完成"
+    echo "" >> "${LOG_FILE}"
+    echo "# 所有测试完成 - $(date '+%Y-%m-%d %H:%M:%S')" >> "${LOG_FILE}"
     echo -e "${GREEN}所有测试完成！结果已保存到 ${LOG_FILE}${NC}"
 }
 
