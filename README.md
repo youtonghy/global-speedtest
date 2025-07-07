@@ -1,19 +1,48 @@
 # Speedtest 批量测速脚本使用说明
 
 ## 功能介绍
-这个脚本可以自动调用 speedtest-cli 对指定的服务器进行批量测速，并将结果保存到日志文件中。
+这个脚本可以自动调用官方 Speedtest CLI 对指定的服务器进行批量测速，并将结果保存到日志文件中。
 
 ## 前置条件
-确保系统已安装 speedtest-cli：
+确保系统已安装官方 Speedtest CLI：
+
+### Ubuntu/Debian 安装方法
 ```bash
-# Ubuntu/Debian
-sudo apt install speedtest-cli
+# 添加官方 Ookla 仓库
+curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
 
-# CentOS/RHEL
-sudo yum install speedtest-cli
+# 安装 Speedtest CLI
+sudo apt-get install speedtest
+```
 
-# 使用 pip 安装
-pip install speedtest-cli
+### CentOS/RHEL/Fedora 安装方法
+```bash
+# 添加官方 Ookla 仓库
+curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.rpm.sh | sudo bash
+
+# 安装 Speedtest CLI
+sudo yum install speedtest
+# 或者对于较新版本
+sudo dnf install speedtest
+```
+
+### macOS 安装方法
+```bash
+# 使用 Homebrew
+brew tap teamookla/speedtest
+brew update
+brew install speedtest --force
+```
+
+### 验证安装
+```bash
+speedtest --version
+```
+
+**注意：** 如果系统中已安装第三方的 `speedtest-cli`，建议先卸载以避免冲突：
+```bash
+sudo apt remove speedtest-cli  # Ubuntu/Debian
+sudo yum remove speedtest-cli   # CentOS/RHEL
 ```
 
 ## 使用方法
@@ -58,9 +87,10 @@ pip install speedtest-cli
 ```
 
 ## 输出文件
-- 测速结果会保存到脚本所在目录
+- 测速结果会保存到脚本所在目录的 `speedtest_result` 子目录
 - 文件名格式：`speedtest_results_YYYYMMDD_HHMMSS.log`
 - 包含详细的测速结果和时间戳
+- 结果格式：服务器名称 | 延迟 | 下载速度 | 上传速度 | 丢包率 | 时间
 
 ## 服务器列表文件格式
 服务器列表文件格式如下：
@@ -73,17 +103,23 @@ pip install speedtest-cli
 
 ## 示例
 ```bash
-# 测试预设的中国服务器
+# 测试预设的全球服务器
 ./speedtest.sh -f servers.txt
 
+# 使用远程服务器列表
+./speedtest.sh -u
+
 # 查看测速结果
-cat speedtest_results_*.log
+cat speedtest_result/speedtest_results_*.log
 ```
 
 ## 注意事项
 1. 测速过程中请保持网络稳定
 2. 每次测试之间会有1秒的间隔
 3. 如果某个服务器测试失败，会记录错误信息但继续测试其他服务器
-4. 日志文件会包含完整的测速结果，包括下载速度、上传速度和延迟 
+4. 日志文件会包含完整的测速结果，包括下载速度、上传速度、延迟和丢包率
+5. 首次运行官方 Speedtest CLI 时，需要接受许可条款
+6. 官方 CLI 比第三方版本有更好的性能和准确性
 
+## 默认服务器列表
 DEFAULT_SERVERS_URL="https://raw.githubusercontent.com/youtonghy/global-speedtest/refs/heads/main/servers.txt" 
