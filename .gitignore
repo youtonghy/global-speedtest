@@ -3,3 +3,6 @@ speedtest_result/
 
 # 日志文件
 *.log 
+
+# Claude Code文件
+CLAUDE.md
