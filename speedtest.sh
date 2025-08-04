@@ -42,25 +42,98 @@ create_result_dir() {
     fi
 }
 
-# 检查官方speedtest是否已安装
+# 检查并安装官方speedtest CLI
 check_speedtest_cli() {
-    if ! command -v speedtest &> /dev/null; then
-        echo -e "${RED}错误: 官方 Speedtest CLI 未安装${NC}"
-        echo -e "${YELLOW}请先安装 Ookla Speedtest CLI:${NC}"
-        echo "  Ubuntu/Debian:"
-        echo "    sudo apt-get install curl"
-        echo "    curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash"
-        echo "    sudo apt-get install speedtest"
-        echo ""
-        echo "  CentOS/RHEL:"
-        echo "    curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.rpm.sh | sudo bash"
-        echo "    sudo yum install speedtest"
-        echo ""
-        echo "  macOS:"
-        echo "    brew tap teamookla/speedtest"
-        echo "    brew install speedtest"
-        echo ""
-        echo "  或者从官方网站下载: https://www.speedtest.net/apps/cli"
+    if command -v speedtest &> /dev/null; then
+        echo -e "${GREEN}✓ 官方 Speedtest CLI 已安装${NC}"
+        
+        # 检查是否需要接受许可协议
+        echo -e "${BLUE}正在验证 Speedtest CLI 配置...${NC}"
+        if ! speedtest --help &> /dev/null; then
+            echo -e "${YELLOW}⚠ 需要接受许可协议，正在自动处理...${NC}"
+            if speedtest --accept-license --accept-gdpr --format=human-readable &> /dev/null; then
+                echo -e "${GREEN}✓ 许可协议已自动接受${NC}"
+            else
+                echo -e "${RED}错误: 无法自动接受许可协议，请手动运行: speedtest --accept-license --accept-gdpr${NC}"
+                exit 1
+            fi
+        fi
+        return 0
+    fi
+    
+    echo -e "${YELLOW}⚠ 官方 Speedtest CLI 未检测到，正在自动安装...${NC}"
+    
+    # 检测操作系统类型
+    local os_type=""
+    local install_success=false
+    
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        os_type="$ID"
+    elif [[ -f /etc/redhat-release ]]; then
+        os_type="centos"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        os_type="macos"
+    fi
+    
+    case $os_type in
+        ubuntu|debian)
+            echo -e "${BLUE}检测到 Ubuntu/Debian 系统，正在安装...${NC}"
+            if command -v sudo &> /dev/null; then
+                curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash && \
+                sudo apt-get install -y speedtest && install_success=true
+            else
+                echo -e "${RED}错误: 需要 sudo 权限进行安装${NC}"
+                exit 1
+            fi
+            ;;
+        centos|rhel|fedora)
+            echo -e "${BLUE}检测到 CentOS/RHEL/Fedora 系统，正在安装...${NC}"
+            if command -v sudo &> /dev/null; then
+                curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.rpm.sh | sudo bash && \
+                sudo yum install -y speedtest && install_success=true
+            else
+                echo -e "${RED}错误: 需要 sudo 权限进行安装${NC}"
+                exit 1
+            fi
+            ;;
+        macos)
+            echo -e "${BLUE}检测到 macOS 系统，正在安装...${NC}"
+            if command -v brew &> /dev/null; then
+                brew tap teamookla/speedtest && \
+                brew install speedtest && install_success=true
+            else
+                echo -e "${RED}错误: 需要 Homebrew 进行安装，请先安装 Homebrew${NC}"
+                echo "安装命令: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+                exit 1
+            fi
+            ;;
+        *)
+            echo -e "${RED}错误: 不支持的操作系统 ${os_type}${NC}"
+            echo -e "${YELLOW}请手动安装 Ookla Speedtest CLI:${NC}"
+            echo "  Ubuntu/Debian: sudo apt-get install speedtest"
+            echo "  CentOS/RHEL: sudo yum install speedtest"
+            echo "  macOS: brew install speedtest"
+            echo "  或者从官方网站下载: https://www.speedtest.net/apps/cli"
+            exit 1
+            ;;
+    esac
+    
+# 验证安装是否成功并自动接受许可
+    if [[ "$install_success" == true ]] && command -v speedtest &> /dev/null; then
+        echo -e "${GREEN}✓ 官方 Speedtest CLI 安装成功${NC}"
+        
+        # 自动接受许可协议（首次使用）
+        echo -e "${BLUE}正在配置 Speedtest CLI...${NC}"
+        if speedtest --accept-license --accept-gdpr --format=human-readable &> /dev/null; then
+            echo -e "${GREEN}✓ 许可协议已自动接受${NC}"
+        else
+            echo -e "${YELLOW}⚠ 许可协议配置可能需要手动确认${NC}"
+        fi
+        
+        return 0
+    else
+        echo -e "${RED}错误: 安装失败，请手动安装${NC}"
         exit 1
     fi
 }
